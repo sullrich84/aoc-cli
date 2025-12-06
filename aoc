@@ -1,0 +1,124 @@
+#!/bin/bash
+
+# MIT License
+#
+# Copyright (c) 2025 Sebastian Ullrich
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Advent of Code Input Downloader
+# Usage: ./aoc [-y|--year <year>] [-d|--day <day>] [-o|--out <file>]
+
+# Default values: current year and day
+YEAR=$(date +%Y)
+DAY=$(date +%d)
+OUTPUT_FILE=""
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -y|--year)
+            YEAR="$2"
+            shift 2
+            ;;
+        -d|--day)
+            DAY="$2"
+            shift 2
+            ;;
+        -o|--out)
+            OUTPUT_FILE="$2"
+            shift 2
+            ;;
+        -h|--help)
+            echo "🎄 Advent of Code CLI"
+            echo ""
+            echo "Usage: $0 [-y|--year <year>] [-d|--day <day>] [-o|--out <file>]"
+            echo ""
+            echo "Options:"
+            echo "  -y, --year <year>    Specify the year (default: current year)"
+            echo "  -d, --day <day>      Specify the day (default: current day)"
+            echo "  -o, --out <file>     Output to file (default: stdout)"
+            echo ""
+            echo "Environment variables:"
+            echo "  AOC_SESSION          Your Advent of Code session cookie (required)"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Use -h or --help for usage information"
+            exit 1
+            ;;
+    esac
+done
+
+# Check if session cookie is set
+if [ -z "$AOC_SESSION" ]; then
+    echo -e "\033[0;31mError: AOC_SESSION environment variable is not set\033[0m" >&2
+    echo "Please set it with: export AOC_SESSION='your_session_cookie_here'" >&2
+    exit 1
+fi
+
+# Remove leading zeros from day for URL
+DAY_NUM=$((10#$DAY))
+
+# Display info about which input is being fetched (to stderr so it doesn't interfere with stdout)
+echo -e "[\033[0;36m⬇\033[0m] \033[2mFetching input: \033[22m\033[1m${YEAR}\033[0m\033[2m / \033[22m\033[1m${DAY_NUM}\033[0m\033[2m\033[0m" >&2
+
+# Download URL
+URL="https://adventofcode.com/${YEAR}/day/${DAY_NUM}/input"
+
+# Determine output destination
+if [ -z "$OUTPUT_FILE" ]; then
+    # Output to stdout
+    # Use a temporary file to separate body and status code
+    TEMP_FILE=$(mktemp)
+    HTTP_CODE=$(curl -s -w "%{http_code}" -o "$TEMP_FILE" \
+        -H "Cookie: session=${AOC_SESSION}" \
+        -H "User-Agent: github.com/sullrich84/aoc-cli via curl" \
+        "$URL")
+
+    if [ "$HTTP_CODE" -eq 200 ]; then
+        cat "$TEMP_FILE"
+        rm -f "$TEMP_FILE"
+    else
+        echo -e "\033[0;31mError: HTTP status code ${HTTP_CODE}\033[0m" >&2
+        rm -f "$TEMP_FILE"
+        exit 1
+    fi
+else
+    # Output to file
+    # Create output directory if it doesn't exist
+    OUTPUT_DIR=$(dirname "$OUTPUT_FILE")
+    mkdir -p "$OUTPUT_DIR"
+
+    # Download the input
+    HTTP_CODE=$(curl -s -w "%{http_code}" -o "$OUTPUT_FILE" \
+        -H "Cookie: session=${AOC_SESSION}" \
+        -H "User-Agent: github.com/sullrich84/aoc-cli via curl" \
+        "$URL")
+
+    # Check if download was successful
+    if [ "$HTTP_CODE" -eq 200 ]; then
+        echo -e "[\033[0;32m✓\033[0m] \033[2mDownloaded input: \033[22m\033[1m${YEAR}\033[0m\033[2m / \033[22m\033[1m${DAY_NUM}\033[0m\033[2m" >&2
+    else
+        echo -e "\033[0;31mError: HTTP status code ${HTTP_CODE}\033[0m" >&2
+        rm -f "$OUTPUT_FILE"
+        exit 1
+    fi
+fi
